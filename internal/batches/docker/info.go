@@ -19,20 +19,25 @@ func CurrentContext(ctx context.Context) (string, error) {
 	}
 	defer cancel()
 
-	args := []string{"context", "inspect", "--format", "{{ .Name }}"}
-	out, err := exec.CommandContext(dctx, "docker", args...).CombinedOutput()
-	if errors.IsDeadlineExceeded(err) || errors.IsDeadlineExceeded(dctx.Err()) {
-		return "", newFastCommandTimeoutError(dctx, args...)
-	} else if err != nil {
-		return "", err
+	args := []string{"info", "--format", "{{ .Host }}"}
+
+	if err := exec.CommandContext(dctx, "docker", args...).Run(); err != nil {
+		args := []string{"context", "inspect", "--format", "{{ .Name }}"}
+		out, err := exec.CommandContext(dctx, "docker", args...).CombinedOutput()
+		if errors.IsDeadlineExceeded(err) || errors.IsDeadlineExceeded(dctx.Err()) {
+			return "", newFastCommandTimeoutError(dctx, args...)
+		} else if err != nil {
+			return "", err
+		}
+		name := string(bytes.TrimSpace(out))
+		if name == "" {
+			return "", errors.New("no context returned from Docker")
+		} else {
+			return name, nil
+		}
 	}
 
-	name := string(bytes.TrimSpace(out))
-	if name == "" {
-		return "", errors.New("no context returned from Docker")
-	}
-
-	return name, nil
+	return "", nil
 }
 
 // NCPU returns the number of CPU cores available to Docker.
@@ -43,7 +48,16 @@ func NCPU(ctx context.Context) (int, error) {
 	}
 	defer cancel()
 
-	args := []string{"info", "--format", "{{ .NCPU }}"}
+	docker_format := "{{ .NPCU }}"
+	podman_format := "{{ .Host.CPUs }}"
+
+	args := []string{"info", "--format", "{{ .Host }}"}
+	if err := exec.CommandContext(dctx, "docker", args...).Run(); err != nil {
+		args = []string{"info", "--format", docker_format}
+	} else {
+		args = []string{"info", "--format", podman_format}
+	}
+
 	out, err := exec.CommandContext(dctx, "docker", args...).CombinedOutput()
 	if errors.IsDeadlineExceeded(err) || errors.IsDeadlineExceeded(dctx.Err()) {
 		return 0, newFastCommandTimeoutError(dctx, args...)
